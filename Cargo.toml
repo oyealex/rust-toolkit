@@ -1,0 +1,31 @@
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[workspace]
+resolver = "2"
+members = [
+    "demo/*",
+    "playground",
+]
+
+[workspace.package]
+edition = "2021"
+
+[workspace.dependencies]
+rand = "0.8.5" # 随机数
+druid = "0.8.3" # GUI: druid
+env_logger = "0.11.3" # 记录环境变量
+eframe = "0.27.2" # egui
+rfd = "0.14.1"
+egui_demo_lib = "0.27.2" # egui demo
+iced = "0.12.1" # GUI: iced
+slint = "1.5" # GUI: slint
+slint-build = "1.5" # for slit build
+clipboard = "0.5.0" # 剪切板
+fltk = "1.4" # GUI: fltk
+
+[profile.release]
+strip = true
+opt-level = "z"
+lto = true
+codegen-units = 1
+panic = "abort"
