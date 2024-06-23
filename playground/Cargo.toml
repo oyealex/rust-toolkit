@@ -6,31 +6,37 @@ edition = { workspace = true }
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-rand = { workspace = true }
-tray-icon = { workspace = true }
-winit = { workspace = true }
-xilem = { workspace = true }
+rand.workspace = true
+tray-icon.workspace = true
+winit.workspace = true
+xilem.workspace = true
+anyhow.workspace = true
+serde_json.workspace = true
 
 [[example]]
 name = "mode_demo"
-path = "example/mod_demo/main.rs"
+path = "examples/mod_demo/main.rs"
 
 [[example]]
 name = "comprehensive_rust"
-path = "example/comprehensive_rust/main.rs"
+path = "examples/comprehensive_rust/main.rs"
 
 [[example]]
 name = "rust_by_example"
-path = "example/rust_by_example/main.rs"
+path = "examples/rust_by_example/main.rs"
 
 [[example]]
 name = "mine_grep"
-path = "example/mine_grep/main.rs"
+path = "examples/mine_grep/main.rs"
 
 [[example]]
 name = "tray_and_menu"
-path = "example/tray_and_menu/main.rs"
+path = "examples/tray_and_menu/main.rs"
 
 [[example]]
 name = "xilem_demo"
-path = "example/xilem_demo/main.rs"
+path = "examples/xilem_demo/main.rs"
+
+[[example]]
+name = "anyhow_demo"
+path = "examples/anyhow_demo.rs"
