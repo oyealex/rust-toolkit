@@ -1,11 +1,15 @@
 [package]
 name = "playground"
 version = "0.1.0"
+edition = { workspace = true }
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
 rand = { workspace = true }
+tray-icon = { workspace = true }
+winit = { workspace = true }
+xilem = { workspace = true }
 
 [[example]]
 name = "mode_demo"
@@ -22,3 +26,11 @@ path = "example/rust_by_example/main.rs"
 [[example]]
 name = "mine_grep"
 path = "example/mine_grep/main.rs"
+
+[[example]]
+name = "tray_and_menu"
+path = "example/tray_and_menu/main.rs"
+
+[[example]]
+name = "xilem_demo"
+path = "example/xilem_demo/main.rs"
