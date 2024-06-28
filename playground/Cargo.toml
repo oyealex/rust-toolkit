@@ -13,6 +13,8 @@ xilem.workspace = true
 anyhow.workspace = true
 serde_json.workspace = true
 image.workspace = true
+native-windows-gui.workspace = true
+global-hotkey.workspace = true
 
 [[example]]
 name = "mode_demo"

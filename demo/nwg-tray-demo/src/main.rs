@@ -1,6 +1,36 @@
 extern crate native_windows_gui as nwg;
 
-use nwg::NativeUi;
+use nwg::{ControlHandle, NativeUi};
+use thiserror::Error;
+use winapi::shared::windef::HWND;
+use winapi::um::winuser::{RegisterHotKey, MOD_ALT, MOD_CONTROL, MOD_NOREPEAT, MOD_SHIFT, WM_HOTKEY, UnregisterHotKey};
+
+pub type Result<T> = std::result::Result<T, Error>;
+
+#[non_exhaustive]
+#[derive(Error, Debug)]
+pub enum Error {
+    #[error(transparent)]
+    OsError(#[from] std::io::Error),
+    #[error("{0}")]
+    HotKeyParseError(String),
+    #[error("Couldn't recognize \"{0}\" as a valid HotKey Code, if you feel like it should be, please report this to https://github.com/tauri-apps/global-hotkey"
+    )]
+    UnrecognizedHotKeyCode(String),
+    #[error("Unexpected empty token while parsing hotkey: \"{0}\"")]
+    EmptyHotKeyToken(String),
+    #[error("Unexpected hotkey string format: \"{0}\", a hotkey should have the modifiers first and only contain one main key"
+    )]
+    UnexpectedHotKeyFormat(String),
+    #[error("Failed to register hotkey")]
+    FailedToRegister,
+    #[error("Failed to unregister hotkey")]
+    FailedToUnRegister,
+    #[error("HotKey already registered")]
+    AlreadyRegistered,
+    #[error("Failed to watch media key event")]
+    FailedToWatchMediaKeyEvent,
+}
 
 #[derive(Default)]
 pub struct SystemTray {
@@ -13,7 +43,28 @@ pub struct SystemTray {
     tray_item_greet_notification: nwg::MenuItem,
 }
 
+const HOTKEY_ID: i32 = 123;
+
 impl SystemTray {
+    fn register_hotkey(&self) -> Result<()> {
+        if let ControlHandle::Hwnd(hwnd) = self.window.handle {
+            let mods = MOD_NOREPEAT | MOD_CONTROL | MOD_SHIFT | MOD_ALT;
+            let result = unsafe { RegisterHotKey(hwnd, HOTKEY_ID as _, mods as _, 0x41 as _) };
+            if result == 0 {
+                return Err(Error::AlreadyRegistered);
+            }
+        } else {
+            return Err(Error::FailedToRegister);
+        }
+        nwg::bind_raw_event_handler(&self.window.handle, 0x12345, move |_hwnd, msg, param, _l| {
+            if msg == WM_HOTKEY {
+                println!("Global hotkey Ctrl + Alt + Shift + A pressed!");
+            }
+            None
+        }).unwrap();
+        Ok(())
+    }
+
     fn show_menu(&self) {
         let (x, y) = nwg::GlobalCursor::position();
         self.tray_menu.popup(x, y);
@@ -34,15 +85,26 @@ impl SystemTray {
     }
 }
 
+impl Drop for SystemTray {
+    fn drop(&mut self) {
+        let hwnd = self.window.handle.hwnd().unwrap() as HWND;
+        unsafe {
+            UnregisterHotKey(hwnd, HOTKEY_ID);
+        }
+    }
+}
+
 //
 // ALL of this stuff is handled by native-windows-derive
 //
 mod system_tray_ui {
-    use super::*;
-    use native_windows_gui as nwg;
     use std::cell::RefCell;
     use std::ops::Deref;
     use std::rc::Rc;
+
+    use native_windows_gui as nwg;
+
+    use super::*;
 
     pub struct SystemTrayUi {
         inner: Rc<SystemTray>,
@@ -50,7 +112,7 @@ mod system_tray_ui {
     }
 
     impl NativeUi<SystemTrayUi> for SystemTray {
-        fn build_ui(mut data: SystemTray) -> Result<SystemTrayUi, nwg::NwgError> {
+        fn build_ui(mut data: SystemTray) -> std::result::Result<SystemTrayUi, nwg::NwgError> {
             // Resources
             nwg::Icon::builder()
                 .source_bin(Some(include_bytes!("icon.png").as_slice()))
@@ -82,6 +144,8 @@ mod system_tray_ui {
                 .text("Exit")
                 .parent(&data.tray_menu)
                 .build(&mut data.tray_item_exit)?;
+
+            data.register_hotkey().unwrap();
 
             let ui = SystemTrayUi {
                 inner: Rc::new(data),

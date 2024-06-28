@@ -31,7 +31,10 @@ serde_json = "1.0.117" # A JSON serialization file format
 image = "0.25.1" # Imaging library. Provides basic image processing and encoders/decoders for common image formats.
 nom = "7.1.3" # A byte-oriented, zero-copy, parser combinators library
 native-windows-gui = "1.0.13" # A rust library to develop native GUI applications on the desktop for Microsoft Windows.
+native-windows-derive = "1.0.5" # A very light and simple rust GUI library
 global-hotkey = "0.5.4" # Global hotkeys for Desktop Applications
+winapi = "0.3.9" # Raw FFI bindings for all of Windows API.
+thiserror = "1.0.61"
 
 [profile.release]
 strip = true

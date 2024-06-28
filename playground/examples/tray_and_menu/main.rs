@@ -5,7 +5,6 @@ use std::time::{Duration, Instant};
 
 use anyhow::Context;
 use anyhow::Result;
-use tray_icon::menu::accelerator::{Accelerator, Code, Modifiers};
 use tray_icon::menu::{Menu, MenuEvent, MenuItem};
 use tray_icon::TrayIconBuilder;
 use winit::event::Event::NewEvents;
@@ -18,20 +17,18 @@ fn main() -> Result<()> {
     let mut tray_icon = None;
     let mut exit_item_id = None;
 
+    event_loop.set_control_flow(ControlFlow::Wait);
+
     #[allow(deprecated)]
     event_loop.run(|event, event_loop| {
         // 设置重新检查事件的间隔时间，每秒钟检查10次，避免过多消耗CPU
-        event_loop.set_control_flow(ControlFlow::WaitUntil(
-            Instant::now() + Duration::from_millis(100),
-        ));
+        // event_loop.set_control_flow(ControlFlow::WaitUntil(
+        //     Instant::now() + Duration::from_millis(100),
+        // ));
 
         if let NewEvents(StartCause::Init) = event {
             let menu = Menu::new();
-            let exit_menu = MenuItem::new(
-                "E&xit",
-                true,
-                Some(Accelerator::new(Some(Modifiers::ALT), Code::KeyE)),
-            );
+            let exit_menu = MenuItem::new("Exit", true, None);
             menu.append(&exit_menu).unwrap();
             exit_item_id = Some(exit_menu.id().clone());
             tray_icon = Some(
@@ -57,11 +54,7 @@ fn main() -> Result<()> {
 }
 
 fn load_icon() -> Result<tray_icon::Icon> {
-    let path = concat!(
-        env!("CARGO_MANIFEST_DIR"),
-        "/examples/tray_and_menu/res/icon.png"
-    );
-    let image = image::open(Path::new(path))
+    let image = image::load_from_memory(include_bytes!("res/icon.png"))
         .with_context(|| "failed to load icon file".to_string())?
         .into_rgba8();
     let (width, height) = image.dimensions();
