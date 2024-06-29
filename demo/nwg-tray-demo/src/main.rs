@@ -2,67 +2,88 @@ extern crate native_windows_gui as nwg;
 
 use nwg::{ControlHandle, NativeUi};
 use thiserror::Error;
-use winapi::shared::windef::HWND;
 use winapi::um::winuser::{
     RegisterHotKey, UnregisterHotKey, MOD_ALT, MOD_CONTROL, MOD_NOREPEAT, MOD_SHIFT, WM_HOTKEY,
 };
 
 pub type Result<T> = std::result::Result<T, Error>;
 
+trait HotkeyCallback {
+    fn hotkey_fired(&self, hotkey_id: i32) -> ();
+}
+
 #[non_exhaustive]
 #[derive(Error, Debug)]
 pub enum Error {
     #[error(transparent)]
     OsError(#[from] std::io::Error),
-    #[error("Failed to register hotkey")]
-    FailedToRegister,
-    #[error("Failed to unregister hotkey")]
-    FailedToUnRegister,
+    #[error("Failed to register hotkey: {0:?}")]
+    FailedToRegister(String),
+    #[error("Failed to unregister hotkey: {0:?}")]
+    FailedToUnRegister(String),
     #[error("HotKey already registered")]
     AlreadyRegistered,
 }
 
 #[derive(Default)]
-pub struct SystemTray {
-    window: nwg::MessageWindow,    // 主窗口
-    icon: nwg::Icon,               // 图标资源
-    tray: nwg::TrayNotification,   // 任务栏图标
-    tray_menu: nwg::Menu,          // 菜单
-    tray_item_exit: nwg::MenuItem, // 退出菜单项
-    tray_item_greet_window: nwg::MenuItem,
-    tray_item_greet_notification: nwg::MenuItem,
+pub struct App {
+    window: nwg::MessageWindow,  // 主窗口
+    icon: nwg::Icon,             // 图标资源
+    tray: nwg::TrayNotification, // 任务栏图标
+    menu: nwg::Menu,             // 菜单
+    menu_item_greet_window: nwg::MenuItem,
+    menu_item_greet_notification: nwg::MenuItem,
+    menu_item_enable_hotkey: nwg::MenuItem,
+    menu_item_disable_hotkey: nwg::MenuItem,
+    menu_item_exit: nwg::MenuItem, // 退出菜单项
 }
 
 const HOTKEY_ID: i32 = 123;
+const VK_A: u32 = 0x41;
 
-impl SystemTray {
+const HOTKEY_CALLBACK__HANDLER_ID: usize = 0x12345;
+
+impl HotkeyCallback for App {
+    fn hotkey_fired(&self, hotkey_id: i32) -> () {
+        println!("hotkey fired: {}", hotkey_id);
+    }
+}
+
+impl App {
     fn register_hotkey(&self) -> Result<()> {
         if let ControlHandle::Hwnd(hwnd) = self.window.handle {
             let mods = MOD_NOREPEAT | MOD_CONTROL | MOD_SHIFT | MOD_ALT;
-            let result = unsafe { RegisterHotKey(hwnd, HOTKEY_ID as _, mods as _, 0x41 as _) };
+            let result = unsafe { RegisterHotKey(hwnd, HOTKEY_ID as _, mods as _, VK_A as _) };
             if result == 0 {
                 return Err(Error::AlreadyRegistered);
             }
         } else {
-            return Err(Error::FailedToRegister);
+            return Err(Error::FailedToRegister(format!(
+                "invalid handle: {:?}",
+                self.window.handle
+            )));
         }
-        nwg::bind_raw_event_handler(
-            &self.window.handle,
-            0x12345,
-            move |_hwnd, msg, param, _l| {
-                if msg == WM_HOTKEY {
-                    println!("Global hotkey Ctrl + Alt + Shift + A pressed!");
-                }
-                None
-            },
-        )
-        .unwrap();
+        Ok(())
+    }
+
+    fn unregister_hotkey(&self) -> Result<()> {
+        if let ControlHandle::Hwnd(hwnd) = self.window.handle {
+            let result = unsafe { UnregisterHotKey(hwnd, HOTKEY_ID as _) };
+            if result == 0 {
+                return Err(Error::FailedToUnRegister(format!("code: {}", result)));
+            }
+        } else {
+            return Err(Error::FailedToUnRegister(format!(
+                "invalid handle: {:?}",
+                self.window.handle
+            )));
+        }
         Ok(())
     }
 
     fn show_menu(&self) {
         let (x, y) = nwg::GlobalCursor::position();
-        self.tray_menu.popup(x, y);
+        self.menu.popup(x, y);
     }
 
     fn greet_by_window(&self) {
@@ -80,11 +101,12 @@ impl SystemTray {
     }
 }
 
-impl Drop for SystemTray {
+impl Drop for App {
     fn drop(&mut self) {
-        let hwnd = self.window.handle.hwnd().unwrap() as HWND;
-        unsafe {
-            UnregisterHotKey(hwnd, HOTKEY_ID);
+        if let ControlHandle::Hwnd(hwnd) = self.window.handle {
+            unsafe {
+                UnregisterHotKey(hwnd, HOTKEY_ID);
+            }
         }
     }
 }
@@ -97,72 +119,92 @@ mod system_tray_ui {
     use std::ops::Deref;
     use std::rc::Rc;
 
-    use native_windows_gui as nwg;
-
     use super::*;
+    use native_windows_gui as nwg;
+    use nwg::{EventHandler, RawEventHandler};
+    use winapi::shared::minwindef::{LPARAM, UINT, WPARAM};
+    use winapi::shared::windef::HWND;
 
-    pub struct SystemTrayUi {
-        inner: Rc<SystemTray>,
-        default_handler: RefCell<Vec<nwg::EventHandler>>,
+    pub struct AppUi {
+        app: Rc<App>,
+        event_handlers: RefCell<Vec<EventHandler>>,
+        raw_event_handlers: RefCell<Vec<RawEventHandler>>,
     }
 
-    impl NativeUi<SystemTrayUi> for SystemTray {
-        fn build_ui(mut data: SystemTray) -> std::result::Result<SystemTrayUi, nwg::NwgError> {
+    impl NativeUi<AppUi> for App {
+        fn build_ui(mut app: App) -> std::result::Result<AppUi, nwg::NwgError> {
             // Resources
             nwg::Icon::builder()
                 .source_bin(Some(include_bytes!("icon.png").as_slice()))
-                .build(&mut data.icon)?;
+                .build(&mut app.icon)?;
 
             // Controls
-            nwg::MessageWindow::builder().build(&mut data.window)?;
+            nwg::MessageWindow::builder().build(&mut app.window)?;
 
             nwg::TrayNotification::builder()
-                .parent(&data.window)
-                .icon(Some(&data.icon))
+                .parent(&app.window)
+                .icon(Some(&app.icon))
                 .tip(Some("Tray"))
-                .build(&mut data.tray)?;
+                .build(&mut app.tray)?;
 
             nwg::Menu::builder()
                 .popup(true)
-                .parent(&data.window)
-                .build(&mut data.tray_menu)?;
+                .parent(&app.window)
+                .build(&mut app.menu)?;
 
             nwg::MenuItem::builder()
                 .text("Greet Window")
-                .parent(&data.tray_menu)
-                .build(&mut data.tray_item_greet_window)?;
+                .parent(&app.menu)
+                .build(&mut app.menu_item_greet_window)?;
             nwg::MenuItem::builder()
                 .text("Greet Notification")
-                .parent(&data.tray_menu)
-                .build(&mut data.tray_item_greet_notification)?;
+                .parent(&app.menu)
+                .build(&mut app.menu_item_greet_notification)?;
+            nwg::MenuItem::builder()
+                .text("Enable Hotkey")
+                .parent(&app.menu)
+                .build(&mut app.menu_item_enable_hotkey)?;
+            nwg::MenuItem::builder()
+                .text("Disable Hotkey")
+                .parent(&app.menu)
+                .build(&mut app.menu_item_disable_hotkey)?;
             nwg::MenuItem::builder()
                 .text("Exit")
-                .parent(&data.tray_menu)
-                .build(&mut data.tray_item_exit)?;
+                .parent(&app.menu)
+                .build(&mut app.menu_item_exit)?;
 
-            data.register_hotkey().unwrap();
+            app.menu_item_disable_hotkey.set_enabled(false);
 
-            let ui = SystemTrayUi {
-                inner: Rc::new(data),
-                default_handler: Default::default(),
+            let ui = AppUi {
+                app: Rc::new(app),
+                event_handlers: Default::default(),
+                raw_event_handlers: Default::default(),
             };
 
-            let evt_ui = Rc::downgrade(&ui.inner);
-            let handle_events = move |evt, _evt_data, handle| {
-                if let Some(evt_ui) = evt_ui.upgrade() {
-                    match evt {
+            let weak_app = Rc::downgrade(&ui.app);
+            let event_handler = move |event, _evt_data, handle| {
+                if let Some(inner_app) = weak_app.upgrade() {
+                    match event {
                         nwg::Event::OnContextMenu => {
-                            if &handle == &evt_ui.tray {
-                                SystemTray::show_menu(&evt_ui);
+                            if handle == inner_app.tray {
+                                inner_app.show_menu();
                             }
                         }
                         nwg::Event::OnMenuItemSelected => {
-                            if &handle == &evt_ui.tray_item_exit {
-                                SystemTray::exit(&evt_ui);
-                            } else if &handle == &evt_ui.tray_item_greet_window {
-                                SystemTray::greet_by_window(&evt_ui);
-                            } else if &handle == &evt_ui.tray_item_greet_notification {
-                                SystemTray::greet_by_notification(&evt_ui);
+                            if handle == inner_app.menu_item_greet_window {
+                                inner_app.greet_by_window();
+                            } else if handle == inner_app.menu_item_greet_notification {
+                                inner_app.greet_by_notification();
+                            } else if handle == inner_app.menu_item_enable_hotkey {
+                                inner_app.register_hotkey().unwrap();
+                                inner_app.menu_item_enable_hotkey.set_enabled(false);
+                                inner_app.menu_item_disable_hotkey.set_enabled(true);
+                            } else if handle == inner_app.menu_item_disable_hotkey {
+                                inner_app.unregister_hotkey().unwrap();
+                                inner_app.menu_item_enable_hotkey.set_enabled(true);
+                                inner_app.menu_item_disable_hotkey.set_enabled(false);
+                            } else if handle == inner_app.menu_item_exit {
+                                inner_app.exit();
                             }
                         }
                         _ => {}
@@ -170,37 +212,62 @@ mod system_tray_ui {
                 }
             };
 
-            ui.default_handler
+            ui.event_handlers
                 .borrow_mut()
                 .push(nwg::full_bind_event_handler(
                     &ui.window.handle,
-                    handle_events,
+                    event_handler,
                 ));
+
+            let weak_app = Rc::downgrade(&ui.app);
+            let hotkey_event_handler =
+                move |_hwnd: HWND, msg: UINT, wparam: WPARAM, _lparam: LPARAM| {
+                    if msg == WM_HOTKEY {
+                        if let Some(inner_app) = weak_app.upgrade() {
+                            inner_app.hotkey_fired(wparam as i32);
+                        }
+                    }
+                    None
+                };
+
+            ui.raw_event_handlers.borrow_mut().push(
+                nwg::bind_raw_event_handler(
+                    &ui.window.handle,
+                    HOTKEY_CALLBACK__HANDLER_ID,
+                    hotkey_event_handler,
+                )
+                .unwrap(),
+            );
 
             return Ok(ui);
         }
     }
 
-    impl Drop for SystemTrayUi {
+    impl Drop for AppUi {
         fn drop(&mut self) {
-            let mut handlers = self.default_handler.borrow_mut();
+            let mut handlers = self.event_handlers.borrow_mut();
             for handler in handlers.drain(0..) {
                 nwg::unbind_event_handler(&handler);
+            }
+
+            let mut handlers = self.raw_event_handlers.borrow_mut();
+            for handler in handlers.drain(0..) {
+                let _ = nwg::unbind_raw_event_handler(&handler); // ignore the unbind result
             }
         }
     }
 
-    impl Deref for SystemTrayUi {
-        type Target = SystemTray;
+    impl Deref for AppUi {
+        type Target = App;
 
-        fn deref(&self) -> &SystemTray {
-            &self.inner
+        fn deref(&self) -> &App {
+            &self.app
         }
     }
 }
 
 fn main() {
     nwg::init().expect("Failed to init Native Windows GUI");
-    let _ui = SystemTray::build_ui(Default::default()).expect("Failed to build UI");
+    let _app_ui = App::build_ui(Default::default()).expect("Failed to build UI");
     nwg::dispatch_thread_events();
 }
