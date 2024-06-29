@@ -3,7 +3,9 @@ extern crate native_windows_gui as nwg;
 use nwg::{ControlHandle, NativeUi};
 use thiserror::Error;
 use winapi::shared::windef::HWND;
-use winapi::um::winuser::{RegisterHotKey, MOD_ALT, MOD_CONTROL, MOD_NOREPEAT, MOD_SHIFT, WM_HOTKEY, UnregisterHotKey};
+use winapi::um::winuser::{
+    RegisterHotKey, UnregisterHotKey, MOD_ALT, MOD_CONTROL, MOD_NOREPEAT, MOD_SHIFT, WM_HOTKEY,
+};
 
 pub type Result<T> = std::result::Result<T, Error>;
 
@@ -12,24 +14,12 @@ pub type Result<T> = std::result::Result<T, Error>;
 pub enum Error {
     #[error(transparent)]
     OsError(#[from] std::io::Error),
-    #[error("{0}")]
-    HotKeyParseError(String),
-    #[error("Couldn't recognize \"{0}\" as a valid HotKey Code, if you feel like it should be, please report this to https://github.com/tauri-apps/global-hotkey"
-    )]
-    UnrecognizedHotKeyCode(String),
-    #[error("Unexpected empty token while parsing hotkey: \"{0}\"")]
-    EmptyHotKeyToken(String),
-    #[error("Unexpected hotkey string format: \"{0}\", a hotkey should have the modifiers first and only contain one main key"
-    )]
-    UnexpectedHotKeyFormat(String),
     #[error("Failed to register hotkey")]
     FailedToRegister,
     #[error("Failed to unregister hotkey")]
     FailedToUnRegister,
     #[error("HotKey already registered")]
     AlreadyRegistered,
-    #[error("Failed to watch media key event")]
-    FailedToWatchMediaKeyEvent,
 }
 
 #[derive(Default)]
@@ -56,12 +46,17 @@ impl SystemTray {
         } else {
             return Err(Error::FailedToRegister);
         }
-        nwg::bind_raw_event_handler(&self.window.handle, 0x12345, move |_hwnd, msg, param, _l| {
-            if msg == WM_HOTKEY {
-                println!("Global hotkey Ctrl + Alt + Shift + A pressed!");
-            }
-            None
-        }).unwrap();
+        nwg::bind_raw_event_handler(
+            &self.window.handle,
+            0x12345,
+            move |_hwnd, msg, param, _l| {
+                if msg == WM_HOTKEY {
+                    println!("Global hotkey Ctrl + Alt + Shift + A pressed!");
+                }
+                None
+            },
+        )
+        .unwrap();
         Ok(())
     }
 
