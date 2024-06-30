@@ -5,6 +5,6 @@ edition.workspace = true
 
 [dependencies]
 native-windows-gui.workspace = true
-native-windows-gui.features = ["tray-notification", "message-window", "menu", "cursor"]
+native-windows-gui.features = ["tray-notification", "message-window", "menu", "cursor", "clipboard"]
 winapi.workspace = true
 thiserror.workspace = true

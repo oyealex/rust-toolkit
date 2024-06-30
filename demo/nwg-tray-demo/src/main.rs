@@ -33,8 +33,7 @@ pub struct App {
     menu: nwg::Menu,             // 菜单
     menu_item_greet_window: nwg::MenuItem,
     menu_item_greet_notification: nwg::MenuItem,
-    menu_item_enable_hotkey: nwg::MenuItem,
-    menu_item_disable_hotkey: nwg::MenuItem,
+    menu_item_hotkey: nwg::MenuItem,
     menu_item_exit: nwg::MenuItem, // 退出菜单项
 }
 
@@ -161,19 +160,15 @@ mod system_tray_ui {
                 .parent(&app.menu)
                 .build(&mut app.menu_item_greet_notification)?;
             nwg::MenuItem::builder()
-                .text("Enable Hotkey")
+                .text("Global Hotkey (Ctrl Shift Alt A)")
                 .parent(&app.menu)
-                .build(&mut app.menu_item_enable_hotkey)?;
-            nwg::MenuItem::builder()
-                .text("Disable Hotkey")
-                .parent(&app.menu)
-                .build(&mut app.menu_item_disable_hotkey)?;
+                .build(&mut app.menu_item_hotkey)?;
             nwg::MenuItem::builder()
                 .text("Exit")
                 .parent(&app.menu)
                 .build(&mut app.menu_item_exit)?;
 
-            app.menu_item_disable_hotkey.set_enabled(false);
+            app.menu_item_hotkey.set_checked(false);
 
             let ui = AppUi {
                 app: Rc::new(app),
@@ -195,14 +190,14 @@ mod system_tray_ui {
                                 inner_app.greet_by_window();
                             } else if handle == inner_app.menu_item_greet_notification {
                                 inner_app.greet_by_notification();
-                            } else if handle == inner_app.menu_item_enable_hotkey {
-                                inner_app.register_hotkey().unwrap();
-                                inner_app.menu_item_enable_hotkey.set_enabled(false);
-                                inner_app.menu_item_disable_hotkey.set_enabled(true);
-                            } else if handle == inner_app.menu_item_disable_hotkey {
-                                inner_app.unregister_hotkey().unwrap();
-                                inner_app.menu_item_enable_hotkey.set_enabled(true);
-                                inner_app.menu_item_disable_hotkey.set_enabled(false);
+                            } else if handle == inner_app.menu_item_hotkey {
+                                if inner_app.menu_item_hotkey.checked() {
+                                    inner_app.unregister_hotkey().unwrap();
+                                    inner_app.menu_item_hotkey.set_checked(false);
+                                } else {
+                                    inner_app.register_hotkey().unwrap();
+                                    inner_app.menu_item_hotkey.set_checked(true);
+                                }
                             } else if handle == inner_app.menu_item_exit {
                                 inner_app.exit();
                             }
