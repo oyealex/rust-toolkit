@@ -31,10 +31,18 @@ pub struct App {
     icon: nwg::Icon,             // 图标资源
     tray: nwg::TrayNotification, // 任务栏图标
     menu: nwg::Menu,             // 菜单
-    menu_item_greet_window: nwg::MenuItem,
+    menu_item_login: nwg::MenuItem,
     menu_item_greet_notification: nwg::MenuItem,
     menu_item_hotkey: nwg::MenuItem,
     menu_item_exit: nwg::MenuItem, // 退出菜单项
+    // for login
+    login_window: nwg::Window, // 登录窗口
+    layout: nwg::GridLayout,
+    account_label: nwg::Label,
+    account_input: nwg::TextInput,
+    password_label: nwg::Label,
+    password_input: nwg::TextInput,
+    login_button: nwg::Button,
 }
 
 const HOTKEY_ID: i32 = 123;
@@ -44,11 +52,22 @@ const HOTKEY_CALLBACK__HANDLER_ID: usize = 0x12345;
 
 impl HotkeyCallback for App {
     fn hotkey_fired(&self, hotkey_id: i32) -> () {
-        println!("hotkey fired: {}", hotkey_id);
+        let text = nwg::Clipboard::data_text(&self.window).unwrap_or_else(|| "(Empty)".to_string());
+        nwg::modal_info_message(&self.window, &format!("Hotkey fired: {}", hotkey_id), &text);
     }
 }
 
 impl App {
+    fn login(&self) {
+        let account = self.account_input.text();
+        let password = self.password_input.text();
+        nwg::simple_message(
+            "Login Info",
+            &format!("Account: {}\nPassword: {}", account, password),
+        );
+        self.login_window.set_visible(false);
+    }
+
     fn register_hotkey(&self) -> Result<()> {
         if let ControlHandle::Hwnd(hwnd) = self.window.handle {
             let mods = MOD_NOREPEAT | MOD_CONTROL | MOD_SHIFT | MOD_ALT;
@@ -85,8 +104,8 @@ impl App {
         self.menu.popup(x, y);
     }
 
-    fn greet_by_window(&self) {
-        nwg::modal_info_message(&self.window, "Hello", "Hello World!");
+    fn show_login_window(&self) {
+        self.login_window.set_visible(true);
     }
 
     fn greet_by_notification(&self) {
@@ -110,19 +129,28 @@ impl Drop for App {
     }
 }
 
+fn get_position_of_screen_center(window_size: (i32, i32)) -> (i32, i32) {
+    let x = (nwg::Monitor::width() - window_size.0) / 2;
+    let y = (nwg::Monitor::height() - window_size.1) / 2;
+    (x, y)
+}
+
 //
 // ALL of this stuff is handled by native-windows-derive
 //
 mod system_tray_ui {
+    const LOGIN_WINDOW_SIZE: (i32, i32) = (300, 150);
+
     use std::cell::RefCell;
     use std::ops::Deref;
     use std::rc::Rc;
 
-    use super::*;
     use native_windows_gui as nwg;
     use nwg::{EventHandler, RawEventHandler};
     use winapi::shared::minwindef::{LPARAM, UINT, WPARAM};
     use winapi::shared::windef::HWND;
+
+    use super::*;
 
     pub struct AppUi {
         app: Rc<App>,
@@ -132,29 +160,32 @@ mod system_tray_ui {
 
     impl NativeUi<AppUi> for App {
         fn build_ui(mut app: App) -> std::result::Result<AppUi, nwg::NwgError> {
-            // Resources
+            nwg::Font::set_global_family("Microsoft YaHei")?;
+
+            // 资源
             nwg::Icon::builder()
                 .source_bin(Some(include_bytes!("icon.png").as_slice()))
                 .build(&mut app.icon)?;
 
-            // Controls
+            // 主窗口，不显示
             nwg::MessageWindow::builder().build(&mut app.window)?;
 
+            // 系统托盘
             nwg::TrayNotification::builder()
                 .parent(&app.window)
                 .icon(Some(&app.icon))
                 .tip(Some("Tray"))
                 .build(&mut app.tray)?;
 
+            // 托盘菜单
             nwg::Menu::builder()
                 .popup(true)
                 .parent(&app.window)
                 .build(&mut app.menu)?;
-
             nwg::MenuItem::builder()
-                .text("Greet Window")
+                .text("Login")
                 .parent(&app.menu)
-                .build(&mut app.menu_item_greet_window)?;
+                .build(&mut app.menu_item_login)?;
             nwg::MenuItem::builder()
                 .text("Greet Notification")
                 .parent(&app.menu)
@@ -167,6 +198,45 @@ mod system_tray_ui {
                 .text("Exit")
                 .parent(&app.menu)
                 .build(&mut app.menu_item_exit)?;
+
+            // 登录窗口
+            nwg::Window::builder()
+                .size(LOGIN_WINDOW_SIZE)
+                .position(get_position_of_screen_center(LOGIN_WINDOW_SIZE))
+                .title("Login")
+                .flags(nwg::WindowFlags::WINDOW)
+                .build(&mut app.login_window)?;
+            nwg::Label::builder()
+                .parent(&app.login_window)
+                .text("Username: ")
+                .build(&mut app.account_label)?;
+            nwg::TextInput::builder()
+                .parent(&app.login_window)
+                .build(&mut app.account_input)?;
+            nwg::Label::builder()
+                .parent(&app.login_window)
+                .text("Password: ")
+                .build(&mut app.password_label)?;
+            nwg::TextInput::builder()
+                .parent(&app.login_window)
+                .password(Some('*'))
+                .build(&mut app.password_input)?;
+            nwg::Button::builder()
+                .parent(&app.login_window)
+                .text("Login")
+                .position((10, 120))
+                .size((280, 35))
+                .build(&mut app.login_button)?;
+            // 布局
+            nwg::GridLayout::builder()
+                .parent(&app.login_window)
+                .spacing(5)
+                .child_item(nwg::GridLayoutItem::new(&app.account_label, 0, 0, 1, 1))
+                .child_item(nwg::GridLayoutItem::new(&app.account_input, 1, 0, 2, 1))
+                .child_item(nwg::GridLayoutItem::new(&app.password_label, 0, 1, 1, 1))
+                .child_item(nwg::GridLayoutItem::new(&app.password_input, 1, 1, 2, 1))
+                .child_item(nwg::GridLayoutItem::new(&app.login_button, 0, 2, 3, 1))
+                .build(&app.layout)?;
 
             app.menu_item_hotkey.set_checked(false);
 
@@ -186,8 +256,8 @@ mod system_tray_ui {
                             }
                         }
                         nwg::Event::OnMenuItemSelected => {
-                            if handle == inner_app.menu_item_greet_window {
-                                inner_app.greet_by_window();
+                            if handle == inner_app.menu_item_login {
+                                inner_app.show_login_window();
                             } else if handle == inner_app.menu_item_greet_notification {
                                 inner_app.greet_by_notification();
                             } else if handle == inner_app.menu_item_hotkey {
@@ -212,6 +282,27 @@ mod system_tray_ui {
                 .push(nwg::full_bind_event_handler(
                     &ui.window.handle,
                     event_handler,
+                ));
+
+            let weak_app = Rc::downgrade(&ui.app);
+            let login_window_event_handler = move |event, _evt_data, handle| {
+                if let Some(inner_app) = weak_app.upgrade() {
+                    match event {
+                        nwg::Event::OnButtonClick => {
+                            if handle == inner_app.login_button {
+                                inner_app.login();
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+            };
+
+            ui.event_handlers
+                .borrow_mut()
+                .push(nwg::full_bind_event_handler(
+                    &ui.login_window.handle,
+                    login_window_event_handler,
                 ));
 
             let weak_app = Rc::downgrade(&ui.app);
