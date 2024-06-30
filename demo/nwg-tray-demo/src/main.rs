@@ -1,15 +1,20 @@
+#![windows_subsystem = "windows"]
+
 extern crate native_windows_gui as nwg;
 
 use std::cell::RefCell;
 use std::rc::Rc;
+
 use native_windows_derive::NwgUi;
-use nwg::{ControlHandle, NativeUi, RawEventHandler};
+use nwg::{ControlHandle, Font, NativeUi, RawEventHandler};
 use thiserror::Error;
 use winapi::shared::minwindef::{LPARAM, UINT, WPARAM};
 use winapi::shared::windef::HWND;
 use winapi::um::winuser::{
     RegisterHotKey, UnregisterHotKey, MOD_ALT, MOD_CONTROL, MOD_NOREPEAT, MOD_SHIFT, WM_HOTKEY,
 };
+
+use app_ui::AppUi;
 
 const LOGIN_WINDOW_SIZE: (i32, i32) = (300, 150);
 const HOTKEY_ID: i32 = 123;
@@ -41,7 +46,7 @@ pub struct App {
     #[nwg_resource(source_bin: Some(include_bytes!("icon.png").as_slice()))]
     icon: nwg::Icon, // 图标资源
 
-    #[nwg_control(parent: window, icon: Some(& data.icon), tip: Some("Tray"))]
+    #[nwg_control(parent: window, icon: Some(&data.icon), tip: Some("Tray Demo"))]
     #[nwg_events(MousePressLeftUp: [App::show_menu], OnContextMenu: [App::show_menu])]
     tray: nwg::TrayNotification, // 任务栏图标
 
@@ -56,7 +61,7 @@ pub struct App {
     #[nwg_events(OnMenuItemSelected: [App::greet_by_notification])]
     menu_item_greet_notification: nwg::MenuItem,
 
-    #[nwg_control(parent: menu, text: "Global Hotkey", check: false)]
+    #[nwg_control(parent: menu, text: "Global Hotkey (Ctrl Shift Alt A)", check: false)]
     #[nwg_events(OnMenuItemSelected: [App::switch_global_hotkey])]
     menu_item_hotkey: nwg::MenuItem,
 
@@ -66,7 +71,10 @@ pub struct App {
 
     // for login
     #[nwg_control(size: LOGIN_WINDOW_SIZE,
-    position: get_position_of_screen_center(LOGIN_WINDOW_SIZE), title: "Login", flags: "WINDOW")]
+                  position: get_position_of_screen_center(LOGIN_WINDOW_SIZE),
+                  title: "Login",
+                  icon: Some(&data.icon),
+                  flags: "WINDOW")]
     login_window: nwg::Window, // 登录窗口
 
     #[nwg_layout(parent: login_window, spacing: 5)]
@@ -88,7 +96,7 @@ pub struct App {
     #[nwg_layout_item(layout: layout, col: 1, row: 1, col_span: 2, row_span: 1)]
     password_input: nwg::TextInput,
 
-    #[nwg_control(parent: login_window, text: "Login")]
+    #[nwg_control(parent: login_window, text: "&Login", focus: true)]
     #[nwg_layout_item(layout: layout, col: 0, row: 2, col_span: 3, row_span: 1)]
     #[nwg_events(OnButtonClick: [App::login])]
     login_button: nwg::Button,
@@ -102,6 +110,37 @@ impl HotkeyCallback for App {
 }
 
 impl App {
+    fn show_menu(&self) {
+        let (x, y) = nwg::GlobalCursor::position();
+        self.menu.popup(x, y);
+    }
+
+    fn greet_by_notification(&self) {
+        let flags = nwg::TrayNotificationFlags::USER_ICON | nwg::TrayNotificationFlags::LARGE_ICON;
+        self.tray
+            .show("Hello", Some("Hello World!"), Some(flags), Some(&self.icon));
+    }
+
+    fn switch_global_hotkey(&self) {
+        if self.menu_item_hotkey.checked() {
+            self.unregister_hotkey().unwrap();
+            self.menu_item_hotkey.set_checked(false);
+        } else {
+            self.register_hotkey().unwrap();
+            self.menu_item_hotkey.set_checked(true);
+        }
+    }
+
+    fn show_login_window(&self) {
+        let position = get_position_of_screen_center(LOGIN_WINDOW_SIZE);
+        self.login_window.set_position(position.0, position.1);
+        self.login_window.set_visible(true);
+    }
+
+    fn exit(&self) {
+        nwg::stop_thread_dispatch();
+    }
+
     fn login(&self) {
         let account = self.account_input.text();
         let password = self.password_input.text();
@@ -109,6 +148,8 @@ impl App {
             "Login Info",
             &format!("Account: {}\nPassword: {}", account, password),
         );
+        self.account_input.set_text("");
+        self.password_input.set_text("");
         self.login_window.set_visible(false);
     }
 
@@ -142,35 +183,6 @@ impl App {
         }
         Ok(())
     }
-
-    fn show_menu(&self) {
-        let (x, y) = nwg::GlobalCursor::position();
-        self.menu.popup(x, y);
-    }
-
-    fn show_login_window(&self) {
-        self.login_window.set_visible(true);
-    }
-
-    fn greet_by_notification(&self) {
-        let flags = nwg::TrayNotificationFlags::USER_ICON | nwg::TrayNotificationFlags::LARGE_ICON;
-        self.tray
-            .show("Hello", Some("Hello World!"), Some(flags), Some(&self.icon));
-    }
-
-    fn switch_global_hotkey(&self) {
-        if self.menu_item_hotkey.checked() {
-            self.unregister_hotkey().unwrap();
-            self.menu_item_hotkey.set_checked(false);
-        } else {
-            self.register_hotkey().unwrap();
-            self.menu_item_hotkey.set_checked(true);
-        }
-    }
-
-    fn exit(&self) {
-        nwg::stop_thread_dispatch();
-    }
 }
 
 impl Drop for App {
@@ -189,20 +201,18 @@ fn get_position_of_screen_center(window_size: (i32, i32)) -> (i32, i32) {
     (x, y)
 }
 
-
-use app_ui::AppUi;
-struct AppUiExt {
-    app_ui: AppUi,
+struct AppUiWrapper {
+    app_ui: Rc<AppUi>,
     raw_event_handlers: RefCell<Vec<RawEventHandler>>,
 }
 
-impl AppUiExt {
+impl AppUiWrapper {
     fn bind_event_handler_ext(&self) {
-        let weak_app = Rc::downgrade(&(self.app_ui as Rc<App>));
+        let weak_app_ui = Rc::downgrade(&self.app_ui);
         let hotkey_event_handler =
             move |_hwnd: HWND, msg: UINT, wparam: WPARAM, _lparam: LPARAM| {
                 if msg == WM_HOTKEY {
-                    if let Some(inner_app) = weak_app.upgrade() {
+                    if let Some(inner_app) = weak_app_ui.upgrade() {
                         inner_app.hotkey_fired(wparam as i32);
                     }
                 }
@@ -214,227 +224,28 @@ impl AppUiExt {
                 HOTKEY_CALLBACK__HANDLER_ID,
                 hotkey_event_handler,
             )
-                .unwrap(),
+            .unwrap(),
         );
     }
 }
 
-// //
-// // ALL of this stuff is handled by native-windows-derive
-// //
-// mod system_tray_ui {
-//
-//     use std::cell::RefCell;
-//     use std::ops::Deref;
-//     use std::rc::Rc;
-//
-//     use native_windows_gui as nwg;
-//     use nwg::{EventHandler, RawEventHandler};
-//     use winapi::shared::minwindef::{LPARAM, UINT, WPARAM};
-//     use winapi::shared::windef::HWND;
-//
-//     use super::*;
-//
-//     pub struct AppUi {
-//         app: Rc<App>,
-//         event_handlers: RefCell<Vec<EventHandler>>,
-//         raw_event_handlers: RefCell<Vec<RawEventHandler>>,
-//     }
-//
-//     impl NativeUi<AppUi> for App {
-//         fn build_ui(mut app: App) -> std::result::Result<AppUi, nwg::NwgError> {
-//             nwg::Font::set_global_family("Microsoft YaHei")?;
-//
-//             // 资源
-//             nwg::Icon::builder()
-//                 .source_bin(Some(include_bytes!("icon.png").as_slice()))
-//                 .build(&mut app.icon)?;
-//
-//             // 主窗口，不显示
-//             nwg::MessageWindow::builder().build(&mut app.window)?;
-//
-//             // 系统托盘
-//             nwg::TrayNotification::builder()
-//                 .parent(&app.window)
-//                 .icon(Some(&app.icon))
-//                 .tip(Some("Tray"))
-//                 .build(&mut app.tray)?;
-//
-//             // 托盘菜单
-//             nwg::Menu::builder()
-//                 .popup(true)
-//                 .parent(&app.window)
-//                 .build(&mut app.menu)?;
-//             nwg::MenuItem::builder()
-//                 .text("Login")
-//                 .parent(&app.menu)
-//                 .build(&mut app.menu_item_login)?;
-//             nwg::MenuItem::builder()
-//                 .text("Greet Notification")
-//                 .parent(&app.menu)
-//                 .build(&mut app.menu_item_greet_notification)?;
-//             nwg::MenuItem::builder()
-//                 .text("Global Hotkey (Ctrl Shift Alt A)")
-//                 .parent(&app.menu)
-//                 .build(&mut app.menu_item_hotkey)?;
-//             nwg::MenuItem::builder()
-//                 .text("Exit")
-//                 .parent(&app.menu)
-//                 .build(&mut app.menu_item_exit)?;
-//
-//             // 登录窗口
-//             nwg::Window::builder()
-//                 .size(LOGIN_WINDOW_SIZE)
-//                 .position(get_position_of_screen_center(LOGIN_WINDOW_SIZE))
-//                 .title("Login")
-//                 .flags(nwg::WindowFlags::WINDOW)
-//                 .build(&mut app.login_window)?;
-//             nwg::Label::builder()
-//                 .parent(&app.login_window)
-//                 .text("Username: ")
-//                 .build(&mut app.account_label)?;
-//             nwg::TextInput::builder()
-//                 .parent(&app.login_window)
-//                 .build(&mut app.account_input)?;
-//             nwg::Label::builder()
-//                 .parent(&app.login_window)
-//                 .text("Password: ")
-//                 .build(&mut app.password_label)?;
-//             nwg::TextInput::builder()
-//                 .parent(&app.login_window)
-//                 .password(Some('*'))
-//                 .build(&mut app.password_input)?;
-//             nwg::Button::builder()
-//                 .parent(&app.login_window)
-//                 .text("Login")
-//                 .build(&mut app.login_button)?;
-//             // 布局
-//             nwg::GridLayout::builder()
-//                 .parent(&app.login_window)
-//                 .spacing(5)
-//                 .child_item(nwg::GridLayoutItem::new(&app.account_label, 0, 0, 1, 1))
-//                 .child_item(nwg::GridLayoutItem::new(&app.account_input, 1, 0, 2, 1))
-//                 .child_item(nwg::GridLayoutItem::new(&app.password_label, 0, 1, 1, 1))
-//                 .child_item(nwg::GridLayoutItem::new(&app.password_input, 1, 1, 2, 1))
-//                 .child_item(nwg::GridLayoutItem::new(&app.login_button, 0, 2, 3, 1))
-//                 .build(&app.layout)?;
-//
-//             app.menu_item_hotkey.set_checked(false);
-//
-//             let ui = AppUi {
-//                 app: Rc::new(app),
-//                 event_handlers: Default::default(),
-//                 raw_event_handlers: Default::default(),
-//             };
-//
-//             let weak_app = Rc::downgrade(&ui.app);
-//             let event_handler = move |event, _evt_data, handle| {
-//                 if let Some(inner_app) = weak_app.upgrade() {
-//                     match event {
-//                         nwg::Event::OnContextMenu => {
-//                             if handle == inner_app.tray {
-//                                 inner_app.show_menu();
-//                             }
-//                         }
-//                         nwg::Event::OnMenuItemSelected => {
-//                             if handle == inner_app.menu_item_login {
-//                                 inner_app.show_login_window();
-//                             } else if handle == inner_app.menu_item_greet_notification {
-//                                 inner_app.greet_by_notification();
-//                             } else if handle == inner_app.menu_item_hotkey {
-//                                 if inner_app.menu_item_hotkey.checked() {
-//                                     inner_app.unregister_hotkey().unwrap();
-//                                     inner_app.menu_item_hotkey.set_checked(false);
-//                                 } else {
-//                                     inner_app.register_hotkey().unwrap();
-//                                     inner_app.menu_item_hotkey.set_checked(true);
-//                                 }
-//                             } else if handle == inner_app.menu_item_exit {
-//                                 inner_app.exit();
-//                             }
-//                         }
-//                         _ => {}
-//                     }
-//                 }
-//             };
-//
-//             ui.event_handlers
-//                 .borrow_mut()
-//                 .push(nwg::full_bind_event_handler(
-//                     &ui.window.handle,
-//                     event_handler,
-//                 ));
-//
-//             let weak_app = Rc::downgrade(&ui.app);
-//             let login_window_event_handler = move |event, _evt_data, handle| {
-//                 if let Some(inner_app) = weak_app.upgrade() {
-//                     match event {
-//                         nwg::Event::OnButtonClick => {
-//                             if handle == inner_app.login_button {
-//                                 inner_app.login();
-//                             }
-//                         }
-//                         _ => {}
-//                     }
-//                 }
-//             };
-//
-//             ui.event_handlers
-//                 .borrow_mut()
-//                 .push(nwg::full_bind_event_handler(
-//                     &ui.login_window.handle,
-//                     login_window_event_handler,
-//                 ));
-//
-//             let weak_app = Rc::downgrade(&ui.app);
-//             let hotkey_event_handler =
-//                 move |_hwnd: HWND, msg: UINT, wparam: WPARAM, _lparam: LPARAM| {
-//                     if msg == WM_HOTKEY {
-//                         if let Some(inner_app) = weak_app.upgrade() {
-//                             inner_app.hotkey_fired(wparam as i32);
-//                         }
-//                     }
-//                     None
-//                 };
-//
-//             ui.raw_event_handlers.borrow_mut().push(
-//                 nwg::bind_raw_event_handler(
-//                     &ui.window.handle,
-//                     HOTKEY_CALLBACK__HANDLER_ID,
-//                     hotkey_event_handler,
-//                 )
-//                     .unwrap(),
-//             );
-//
-//             return Ok(ui);
-//         }
-//     }
-//
-//     impl Drop for AppUi {
-//         fn drop(&mut self) {
-//             let mut handlers = self.event_handlers.borrow_mut();
-//             for handler in handlers.drain(0..) {
-//                 nwg::unbind_event_handler(&handler);
-//             }
-//
-//             let mut handlers = self.raw_event_handlers.borrow_mut();
-//             for handler in handlers.drain(0..) {
-//                 let _ = nwg::unbind_raw_event_handler(&handler); // ignore the unbind result
-//             }
-//         }
-//     }
-//
-//     impl Deref for AppUi {
-//         type Target = App;
-//
-//         fn deref(&self) -> &App {
-//             &self.app
-//         }
-//     }
-// }
+impl Drop for AppUiWrapper {
+    fn drop(&mut self) {
+        let mut handlers = self.raw_event_handlers.borrow_mut();
+        for handler in handlers.drain(0..) {
+            let _ = nwg::unbind_raw_event_handler(&handler); // ignore unbind result
+        }
+    }
+}
 
 fn main() {
     nwg::init().expect("Failed to init Native Windows GUI");
-    let _app_ui = App::build_ui(Default::default()).expect("Failed to build UI");
+    Font::set_global_family("Microsoft YaHei").expect("Failed to setup global font family");
+    let app_ui = App::build_ui(Default::default()).expect("Failed to build UI");
+    let app_ui_wrapper = AppUiWrapper {
+        app_ui: Rc::new(app_ui),
+        raw_event_handlers: Default::default(),
+    };
+    app_ui_wrapper.bind_event_handler_ext();
     nwg::dispatch_thread_events();
 }

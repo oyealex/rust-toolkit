@@ -8,4 +8,5 @@ native-windows-gui.workspace = true
 native-windows-gui.features = ["tray-notification", "message-window", "menu", "cursor", "clipboard"]
 native-windows-derive.workspace = true
 winapi.workspace = true
+winapi.features = ["winuser"]
 thiserror.workspace = true
