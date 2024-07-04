@@ -16,10 +16,12 @@ use winapi::um::winuser::{
 
 use app_ui::AppUi;
 
-const LOGIN_WINDOW_SIZE: (i32, i32) = (300, 150);
+const LOGIN_WINDOW_SIZE: (i32, i32) = (300, 200);
 const HOTKEY_ID: i32 = 123;
 const VK_A: u32 = 0x41;
 const HOTKEY_CALLBACK__HANDLER_ID: usize = 0x12345;
+const HOTKEY_ACTIVATED_TRAY_TIPS: &'static str = "Nwg Tray Demo - Hotkey Activated";
+const TRAY_TIPS: &'static str = "Nwg Tray Demo";
 
 trait HotkeyCallback {
     fn hotkey_fired(&self, hotkey_id: i32) -> ();
@@ -43,62 +45,77 @@ pub struct App {
     #[nwg_control]
     window: nwg::MessageWindow, // 主窗口
 
-    #[nwg_resource(source_bin: Some(include_bytes!("icon.png").as_slice()),
+    #[nwg_resource(source_bin: Some(include_bytes!("icon-normal.ico").as_slice()),
                    size: Some((16u32, 16u32)))]
-    icon: nwg::Icon, // 图标资源
+    normal_tray_icon: nwg::Icon, // 图标资源
 
-    #[nwg_control(parent: window, icon: Some(&data.icon), tip: Some("Tray Demo"))]
+    #[nwg_resource(source_bin: Some(include_bytes!("icon-activated.ico").as_slice()),
+                   size: Some((16u32, 16u32)))]
+    activated_tray_icon: nwg::Icon, // 图标资源
+
+    #[nwg_resource(source_bin: Some(include_bytes!("icon-setting.ico").as_slice()),
+                   size: Some((32u32, 32u32)))]
+    setting_icon: nwg::Icon, // 图标资源
+
+    #[nwg_control(parent: window, icon: Some(&data.normal_tray_icon), tip: Some(TRAY_TIPS))]
     #[nwg_events(MousePressLeftUp: [App::show_menu], OnContextMenu: [App::show_menu])]
     tray: nwg::TrayNotification, // 任务栏图标
 
     #[nwg_control(parent: window, popup: true)]
-    menu: nwg::Menu, // 菜单
+    tray_menu: nwg::Menu, // 菜单
 
-    #[nwg_control(parent: menu, text: "Login")]
-    #[nwg_events(OnMenuItemSelected: [App::show_login_window])]
-    menu_item_login: nwg::MenuItem,
+    #[nwg_control(parent: tray_menu, text: "Setting")]
+    #[nwg_events(OnMenuItemSelected: [App::show_setting_window])]
+    setting_menu_item: nwg::MenuItem,
 
-    #[nwg_control(parent: menu, text: "Greet Notification")]
-    #[nwg_events(OnMenuItemSelected: [App::greet_by_notification])]
-    menu_item_greet_notification: nwg::MenuItem,
-
-    #[nwg_control(parent: menu, text: "Global Hotkey (Ctrl Shift Alt A)", check: false)]
+    #[nwg_control(parent: tray_menu, text: "Global Hotkey (Ctrl Shift Alt A)", check: false)]
     #[nwg_events(OnMenuItemSelected: [App::switch_global_hotkey])]
-    menu_item_hotkey: nwg::MenuItem,
+    hotkey_menu_item: nwg::MenuItem,
 
-    #[nwg_control(parent: menu, text: "Exit")]
+    #[nwg_control(parent: tray_menu, text: "Exit")]
     #[nwg_events(OnMenuItemSelected: [App::exit])]
-    menu_item_exit: nwg::MenuItem, // 退出菜单项
+    exit_menu_item: nwg::MenuItem, // 退出菜单项
 
-    // for login
+    // Setting Window
     #[nwg_control(size: LOGIN_WINDOW_SIZE,
                   position: get_position_of_screen_center(LOGIN_WINDOW_SIZE),
-                  title: "Login",
-                  icon: Some(&data.icon),
+                  title: "Setting",
+                  icon: Some(&data.setting_icon),
                   flags: "WINDOW")]
-    login_window: nwg::Window, // 登录窗口
+    setting_window: nwg::Window, // 配置窗口
 
-    #[nwg_layout(parent: login_window, spacing: 5)]
+    #[nwg_layout(parent: setting_window, spacing: 5)]
     layout: nwg::GridLayout,
 
-    #[nwg_control(parent: login_window, text: "Username: ")]
+    #[nwg_control(parent: setting_window, text: "Username: ")]
     #[nwg_layout_item(layout: layout, col: 0, row: 0, col_span: 1, row_span: 1)]
     account_label: nwg::Label,
 
-    #[nwg_control(parent: login_window)]
+    #[nwg_control(parent: setting_window)]
     #[nwg_layout_item(layout: layout, col: 1, row: 0, col_span: 2, row_span: 1)]
     account_input: nwg::TextInput,
 
-    #[nwg_control(parent: login_window, text: "Password: ")]
+    #[nwg_control(parent: setting_window, text: "Password: ")]
     #[nwg_layout_item(layout: layout, col: 0, row: 1, col_span: 1, row_span: 1)]
     password_label: nwg::Label,
 
-    #[nwg_control(parent: login_window, password: Some('*'))]
+    #[nwg_control(parent: setting_window, password: Some('*'))]
     #[nwg_layout_item(layout: layout, col: 1, row: 1, col_span: 2, row_span: 1)]
     password_input: nwg::TextInput,
 
-    #[nwg_control(parent: login_window, text: "&Login", focus: true)]
-    #[nwg_layout_item(layout: layout, col: 0, row: 2, col_span: 3, row_span: 1)]
+    #[nwg_control(parent: setting_window,
+                  text: "Save &token to file",
+                  check_state: CheckBoxState::Unchecked,
+                  flags: "VISIBLE|TAB_STOP")]
+    #[nwg_layout_item(layout: layout, col: 0, row: 2, col_span: 2, row_span: 1)]
+    save_token_checkbox: nwg::CheckBox,
+
+    #[nwg_control(parent: setting_window, text: "&Show", focus: true)]
+    #[nwg_layout_item(layout: layout, col: 2, row: 2, col_span: 1, row_span: 1)]
+    show_config_button: nwg::Button,
+
+    #[nwg_control(parent: setting_window, text: "&Login", focus: true)]
+    #[nwg_layout_item(layout: layout, col: 0, row: 3, col_span: 3, row_span: 1)]
     #[nwg_events(OnButtonClick: [App::login])]
     login_button: nwg::Button,
 }
@@ -113,29 +130,33 @@ impl HotkeyCallback for App {
 impl App {
     fn show_menu(&self) {
         let (x, y) = nwg::GlobalCursor::position();
-        self.menu.popup(x, y);
+        self.tray_menu.popup(x, y);
     }
 
-    fn greet_by_notification(&self) {
+    fn _greet_by_notification(&self) {
         let flags = nwg::TrayNotificationFlags::USER_ICON | nwg::TrayNotificationFlags::LARGE_ICON;
         self.tray
-            .show("Hello", Some("Hello World!"), Some(flags), Some(&self.icon));
+            .show("Hello", Some("Hello World!"), Some(flags), Some(&self.normal_tray_icon));
     }
 
     fn switch_global_hotkey(&self) {
-        if self.menu_item_hotkey.checked() {
+        if self.hotkey_menu_item.checked() {
             self.unregister_hotkey().unwrap();
-            self.menu_item_hotkey.set_checked(false);
+            self.hotkey_menu_item.set_checked(false);
+            self.tray.set_icon(&self.normal_tray_icon);
+            self.tray.set_tip(TRAY_TIPS);
         } else {
             self.register_hotkey().unwrap();
-            self.menu_item_hotkey.set_checked(true);
+            self.hotkey_menu_item.set_checked(true);
+            self.tray.set_icon(&self.activated_tray_icon);
+            self.tray.set_tip(HOTKEY_ACTIVATED_TRAY_TIPS);
         }
     }
 
-    fn show_login_window(&self) {
+    fn show_setting_window(&self) {
         let position = get_position_of_screen_center(LOGIN_WINDOW_SIZE);
-        self.login_window.set_position(position.0, position.1);
-        self.login_window.set_visible(true);
+        self.setting_window.set_position(position.0, position.1);
+        self.setting_window.set_visible(true);
     }
 
     fn exit(&self) {
@@ -151,7 +172,7 @@ impl App {
         );
         self.account_input.set_text("");
         self.password_input.set_text("");
-        self.login_window.set_visible(false);
+        self.setting_window.set_visible(false);
     }
 
     fn register_hotkey(&self) -> Result<(), Error> {
