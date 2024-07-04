@@ -43,8 +43,8 @@ pub struct App {
     #[nwg_control]
     window: nwg::MessageWindow, // 主窗口
 
-    #[nwg_resource(source_bin: Some(include_bytes!("OMIH.png").as_slice()),
-                   size: Some((64u32, 64u32)))]
+    #[nwg_resource(source_bin: Some(include_bytes!("icon.png").as_slice()),
+                   size: Some((16u32, 16u32)))]
     icon: nwg::Icon, // 图标资源
 
     #[nwg_control(parent: window, icon: Some(&data.icon), tip: Some("Tray Demo"))]

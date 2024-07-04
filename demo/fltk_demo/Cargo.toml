@@ -6,3 +6,7 @@ edition = { workspace = true }
 [dependencies]
 clipboard = { workspace = true }
 fltk = { workspace = true, features = ["fltk-bundled"] }
+
+[[example]]
+name = "tray"
+path = "examples/tray.rs"
