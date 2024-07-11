@@ -122,8 +122,15 @@ pub struct App {
 
 impl HotkeyCallback for App {
     fn hotkey_fired(&self, hotkey_id: i32) -> () {
-        let text = nwg::Clipboard::data_text(&self.window).unwrap_or_else(|| "(Empty)".to_string());
-        nwg::modal_info_message(&self.window, &format!("Hotkey fired: {}", hotkey_id), &text);
+        if let Some(text) = nwg::Clipboard::data_text(&self.window) {
+            nwg::modal_info_message(&self.window, &format!("Hotkey fired: {}", hotkey_id), &text);
+        } else {
+            nwg::modal_info_message(
+                &self.window,
+                &format!("Hotkey fired: {}", hotkey_id),
+                "no text content found in clipboard",
+            );
+        }
     }
 }
 
@@ -135,8 +142,12 @@ impl App {
 
     fn _greet_by_notification(&self) {
         let flags = nwg::TrayNotificationFlags::USER_ICON | nwg::TrayNotificationFlags::LARGE_ICON;
-        self.tray
-            .show("Hello", Some("Hello World!"), Some(flags), Some(&self.normal_tray_icon));
+        self.tray.show(
+            "Hello",
+            Some("Hello World!"),
+            Some(flags),
+            Some(&self.normal_tray_icon),
+        );
     }
 
     fn switch_global_hotkey(&self) {
