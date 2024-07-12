@@ -8,21 +8,14 @@ fn _basic() {
 }
 
 fn _row_pointer_over_vec() {
-    let v = vec![1,2,3];
+    let v = vec![1, 2, 3];
     let base_pointer = &v as *const Vec<i32> as usize;
     for offset in -8..8i32 {
         let p = base_pointer as i32 + 4 * offset;
         let p = p as *const i32;
-        let pv = unsafe {
-            *p
-        };
+        let pv = unsafe { *p };
         println!("pv: {pv:?}");
     }
-}
-
-struct My;
-impl Error for My {
-
 }
 
 fn main() {
