@@ -48,3 +48,7 @@ path = "examples/anyhow_demo.rs"
 [[example]]
 name = "nwg-clipboard"
 path = "examples/nwg/clipboard.rs"
+
+[[example]]
+name = "pointers"
+path = "examples/pointers.rs"
