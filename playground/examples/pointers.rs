@@ -1,23 +1,21 @@
-use std::error::Error;
-
-fn _basic() {
-    let a = 42;
-    let memory_location = &a as *const i32 as usize;
-    println!("p: {memory_location:0x}");
-    println!("p: {:p}", &a);
-}
-
-fn _row_pointer_over_vec() {
-    let v = vec![1, 2, 3];
-    let base_pointer = &v as *const Vec<i32> as usize;
-    for offset in -8..8i32 {
-        let p = base_pointer as i32 + 4 * offset;
-        let p = p as *const i32;
-        let pv = unsafe { *p };
-        println!("pv: {pv:?}");
-    }
-}
+use std::cell::{RefCell, RefMut};
+use std::collections::HashMap;
+use std::rc::Rc;
 
 fn main() {
-    _row_pointer_over_vec();
+    let shared_map: Rc<RefCell<_>> = Rc::new(RefCell::new(HashMap::new()));
+    // Create a new block to limit the scope of the dynamic borrow
+    // {
+        let mut map: RefMut<'_, _> = shared_map.borrow_mut();
+        map.insert("africa", 92388);
+        map.insert("kyoto", 11837);
+        map.insert("piccadilly", 11826);
+        map.insert("marbles", 38);
+    // }
+
+    // Note that if we had not let the previous borrow of the cache fall out
+    // of scope then the subsequent borrow would cause a dynamic thread panic.
+    // This is the major hazard of using `RefCell`.
+    let total: i32 = shared_map.borrow().values().sum();
+    println!("{total}");
 }
