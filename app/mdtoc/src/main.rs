@@ -1,6 +1,7 @@
 use std::error::Error;
 use std::fmt::{Debug, Display, Formatter};
-use std::fs::read_to_string;
+use std::fs::File;
+use std::io::{BufRead, BufReader, Cursor};
 use std::process::{ExitCode, Termination};
 
 const VERSION: &'static str = "1.0.0";
@@ -50,6 +51,17 @@ impl Termination for ErrKind {
             ErrKind::IoErr(_) => ExitCode::from(2),
             ErrKind::ClipboardErr(_) => ExitCode::from(3),
         }
+    }
+}
+
+impl From<std::io::Error> for ErrKind {
+    fn from(value: std::io::Error) -> Self {
+        ErrKind::IoErr(format!("{value}"))
+    }
+}
+impl From<clipboard_win::ErrorCode> for ErrKind {
+    fn from(value: clipboard_win::ErrorCode) -> Self {
+        ErrKind::ClipboardErr(format!("{value}"))
     }
 }
 
@@ -128,15 +140,24 @@ fn verify(config: &Config) -> Result<(), ErrKind> {
 
 fn handle(config: Config) -> Result<(), ErrKind> {
     let content = read_markdown(config)?;
-    println!("{content}");
+    for line in content {
+        println!("{line}");
+    }
+    // println!("{content}");
     Ok(())
 }
 
-fn read_markdown(config: Config) -> Result<String, ErrKind> {
+fn read_markdown(config: Config) -> Result<Box<dyn Iterator<Item = String>>, ErrKind> {
     if config.from_clip {
-        clipboard_win::get_clipboard_string().map_err(|err| ErrKind::ClipboardErr(format!("{err}")))
+        clipboard_win::get_clipboard_string()
+            .map_err(From::from)
+            .map(Cursor::new)
+            .map(Box::new)
     } else if let Some(file) = config.input_file {
-        read_to_string(file).map_err(|err| ErrKind::IoErr(format!("{err}")))
+        File::open(file)
+            .map_err(From::from)
+            .map(BufReader::new)
+            .map(Box::new)
     } else {
         Err(ErrKind::InvalidParam(
             "`-f, --file` or `-fc, --from-clip` is required".to_owned(),
