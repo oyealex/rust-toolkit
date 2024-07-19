@@ -151,17 +151,21 @@ fn read_markdown(
     config: Config,
 ) -> Result<Box<dyn Iterator<Item = Result<String, io::Error>>>, ErrKind> {
     if config.from_clip {
-        clipboard_win::get_clipboard_string()
-            .map_err(From::from)
-            .map(Cursor::new)
-            .map(BufRead::lines)
-            .map(Box::new)
+        let cursor = match clipboard_win::get_clipboard_string() {
+            Ok(content) => Cursor::new(content),
+            Err(err) => {
+                return Err(ErrKind::from(err));
+            }
+        };
+        Ok(Box::new(cursor.lines()))
     } else if let Some(file) = config.input_file {
-        File::open(file)
-            .map_err(From::from)
-            .map(BufReader::new)
-            .map(BufRead::lines)
-            .map(Box::new)
+        let reader = match File::open(file) {
+            Ok(file) => BufReader::new(file),
+            Err(err) => {
+                return Err(ErrKind::from(err));
+            }
+        };
+        Ok(Box::new(reader.lines()))
     } else {
         Err(ErrKind::InvalidParam(
             "`-f, --file` or `-fc, --from-clip` is required".to_owned(),
