@@ -1,8 +1,8 @@
-use std::error::Error;
 use std::fmt::{Debug, Display, Formatter};
 use std::fs::File;
 use std::io::{BufRead, BufReader, Cursor};
 use std::process::{ExitCode, Termination};
+use std::{error, io};
 
 const VERSION: &'static str = "1.0.0";
 const USAGE: &'static str = r#"mdtoc 1.0.0: Markdown TOC tool.
@@ -42,7 +42,7 @@ impl Debug for ErrKind {
     }
 }
 
-impl Error for ErrKind {}
+impl error::Error for ErrKind {}
 
 impl Termination for ErrKind {
     fn report(self) -> ExitCode {
@@ -54,8 +54,8 @@ impl Termination for ErrKind {
     }
 }
 
-impl From<std::io::Error> for ErrKind {
-    fn from(value: std::io::Error) -> Self {
+impl From<io::Error> for ErrKind {
+    fn from(value: io::Error) -> Self {
         ErrKind::IoErr(format!("{value}"))
     }
 }
@@ -141,22 +141,26 @@ fn verify(config: &Config) -> Result<(), ErrKind> {
 fn handle(config: Config) -> Result<(), ErrKind> {
     let content = read_markdown(config)?;
     for line in content {
+        let line = line?;
         println!("{line}");
     }
-    // println!("{content}");
     Ok(())
 }
 
-fn read_markdown(config: Config) -> Result<Box<dyn Iterator<Item = String>>, ErrKind> {
+fn read_markdown(
+    config: Config,
+) -> Result<Box<dyn Iterator<Item = Result<String, io::Error>>>, ErrKind> {
     if config.from_clip {
         clipboard_win::get_clipboard_string()
             .map_err(From::from)
             .map(Cursor::new)
+            .map(BufRead::lines)
             .map(Box::new)
     } else if let Some(file) = config.input_file {
         File::open(file)
             .map_err(From::from)
             .map(BufReader::new)
+            .map(BufRead::lines)
             .map(Box::new)
     } else {
         Err(ErrKind::InvalidParam(
