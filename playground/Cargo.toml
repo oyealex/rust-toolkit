@@ -16,6 +16,7 @@ image.workspace = true
 native-windows-gui.workspace = true
 native-windows-derive.workspace = true
 global-hotkey.workspace = true
+nom.workspace = true
 
 [[example]]
 name = "mode_demo"
@@ -52,3 +53,7 @@ path = "examples/nwg/clipboard.rs"
 [[example]]
 name = "pointers"
 path = "examples/pointers.rs"
+
+[[example]]
+name = "md_parser"
+path = "examples/md_parser.rs"
