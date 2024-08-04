@@ -1,18 +1,54 @@
-pub(crate) enum ExpItem {
-    Number(Number),
-    Operator(Operator),
+use nom::branch::alt;
+use nom::character::complete::{char, digit1};
+use nom::combinator::{map, opt, recognize};
+use nom::sequence::tuple;
+use nom::{IResult, Parser};
+
+#[derive(Debug, PartialEq, Eq)]
+enum Operator {
+    Add,
+    Subtract,
+    Multiply,
+    Divide,
+    LeftParenthesis,
+    RightParenthesis,
 }
 
-#[derive(Debug, Clone, PartialEq, PartialOrd)]
-pub(crate) enum Number {
-    Integer(i64),
-    Long(i128),
-    Double(f64),
+fn num(input: &str) -> IResult<&str, i128> {
+    map(
+        recognize(tuple((opt(alt((char('+'), char('-')))), digit1))),
+        |s: &str| s.parse::<i128>().unwrap(),
+    )
+    .parse(input)
 }
 
-pub(crate) enum Operator {
-    Add(Option<Number>, Option<Number>),
-    Subtract(Option<Number>, Option<Number>),
-    Multiply(Option<Number>, Option<Number>),
-    Divide(Option<Number>, Option<Number>),
+fn operator(input: &str) -> IResult<&str, Operator> {
+    alt((
+        map(char('+'), |_| Operator::Add),
+        map(char('-'), |_| Operator::Subtract),
+        map(char('*'), |_| Operator::Multiply),
+        map(char('/'), |_| Operator::Divide),
+    ))
+    .parse(input)
+}
+
+#[cfg(test)]
+mod test {
+    use crate::calculator::{operator, num};
+    use crate::calculator::Operator;
+
+    #[test]
+    fn test_num() {
+        assert_eq!(Ok(("", 123)), num("123"));
+        assert_eq!(Ok(("", 123)), num("+123"));
+        assert_eq!(Ok(("", -123)), num("-123"));
+    }
+
+    #[test]
+    fn test_operator() {
+        assert_eq!(Ok(("", Operator::Add)), operator("+"));
+        assert_eq!(Ok(("", Operator::Subtract)), operator("-"));
+        assert_eq!(Ok(("", Operator::Multiply)), operator("*"));
+        assert_eq!(Ok(("", Operator::Divide)), operator("/"));
+    }
 }
