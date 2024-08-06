@@ -1,12 +1,13 @@
+use std::str::FromStr;
+
 use nom::{
-    IResult,
     branch::alt,
     character::complete::{char, digit1, space0},
-    combinator::{map_res, opt},
+    combinator::map_res,
+    IResult,
     multi::fold_many0,
-    sequence::{delimited, pair, preceded, terminated},
+    sequence::{delimited, pair},
 };
-use std::str::FromStr;
 
 #[derive(Debug)]
 enum Expr {
@@ -40,7 +41,7 @@ fn parse_term(input: &str) -> IResult<&str, Expr> {
 
     fold_many0(
         pair(alt((char('*'), char('/'))), parse_factor),
-        init,
+        || Expr::Num(0),
         |acc, (op, expr): (char, Expr)| {
             if op == '*' {
                 Expr::Mul(Box::new(acc), Box::new(expr))
@@ -56,7 +57,7 @@ fn parse_expr(input: &str) -> IResult<&str, Expr> {
 
     fold_many0(
         pair(alt((char('+'), char('-'))), parse_term),
-        init,
+        || Expr::Num(0),
         |acc, (op, expr): (char, Expr)| {
             if op == '+' {
                 Expr::Add(Box::new(acc), Box::new(expr))
@@ -80,6 +81,7 @@ fn eval(expr: &Expr) -> i32 {
 #[cfg(test)]
 mod test {
     use crate::parser::*;
+
     #[test]
     fn test() {
         let input = "3 + 5 * ( 10 - 4 ) / 2";
@@ -87,10 +89,10 @@ mod test {
             Ok((_, expr)) => {
                 println!("Parsed expression: {:?}", expr);
                 println!("Evaluated result: {}", eval(&expr));
-            },
+            }
             Err(err) => {
                 println!("Failed to parse expression: {:?}", err);
-            },
+            }
         }
     }
 }
