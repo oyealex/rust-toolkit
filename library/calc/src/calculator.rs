@@ -5,14 +5,35 @@ use nom::sequence::tuple;
 use nom::{IResult, Parser};
 use std::cmp::Ordering;
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
+enum ErrKind {
+    UnExpectedOperator,
+    UnExpectedNumber,
+    MoreParamRequired,
+    InvalidExpression,
+}
+
+#[derive(Debug, PartialEq)]
 enum Number {
     Integer(i128),
-    Double(f64),
+    // Double(f64),
 }
+
+impl From<i128> for Number {
+    fn from(value: i128) -> Self {
+        Number::Integer(value)
+    }
+}
+
+// impl From<f64> for Number {
+//     fn from(value: f64) -> Self {
+//         Number::Double(value)
+//     }
+// }
 
 #[derive(Debug)]
 enum Operator {
+    Eval,
     Add,
     Subtract,
     Multiply,
@@ -22,11 +43,69 @@ enum Operator {
 }
 
 impl Operator {
+    fn calculate(&self, numbers: &mut Vec<Number>) -> Result<Number, ErrKind> {
+        // FIXME: duplicated code need optimize
+        if !self.is_param_enough(numbers.len()) {
+            return Err(ErrKind::MoreParamRequired);
+        }
+        match self {
+            Operator::Add => {
+                let right = match numbers.pop().unwrap() {
+                    Number::Integer(value) => value,
+                };
+                let left = match numbers.pop().unwrap() {
+                    Number::Integer(value) => value,
+                };
+                Ok(Number::from(left + right))
+            }
+            Operator::Subtract => {
+                let right = match numbers.pop().unwrap() {
+                    Number::Integer(value) => value,
+                };
+                let left = match numbers.pop().unwrap() {
+                    Number::Integer(value) => value,
+                };
+                Ok(Number::from(left - right))
+            }
+            Operator::Multiply => {
+                let right = match numbers.pop().unwrap() {
+                    Number::Integer(value) => value,
+                };
+                let left = match numbers.pop().unwrap() {
+                    Number::Integer(value) => value,
+                };
+                Ok(Number::from(left * right))
+            }
+            Operator::Divide => {
+                let right = match numbers.pop().unwrap() {
+                    Number::Integer(value) => value,
+                };
+                let left = match numbers.pop().unwrap() {
+                    Number::Integer(value) => value,
+                };
+                Ok(Number::from(left / right))
+            }
+            Operator::Eval => Ok(numbers.pop().unwrap()),
+        }
+    }
+
     fn priority(&self) -> u8 {
         match self {
             Operator::Add | Operator::Subtract => 1,
             Operator::Multiply | Operator::Divide => 2,
+            Operator::Eval => 0,
         }
+    }
+
+    fn excepted_param_count(&self) -> u8 {
+        match self {
+            Operator::Add | Operator::Subtract | Operator::Multiply | Operator::Divide => 2,
+            Operator::Eval => 1,
+        }
+    }
+
+    fn is_param_enough(&self, len: usize) -> bool {
+        self.excepted_param_count() as usize <= len
     }
 }
 
@@ -54,19 +133,78 @@ impl Ord for Operator {
 struct Calculator {
     numbers: Vec<Number>,
     operators: Vec<Operator>,
+    can_accept_number: bool,
+}
+
+impl Default for Calculator {
+    fn default() -> Self {
+        Calculator {
+            numbers: Vec::new(),
+            operators: Vec::new(),
+            can_accept_number: true,
+        }
+    }
 }
 
 impl Calculator {
-    fn append_number(&mut self, number: Number) {
-        self.numbers.push(number);
+    fn append_number(&mut self, number: Number) -> Result<(), ErrKind> {
+        if self.can_accept_number {
+            self.numbers.push(number);
+            self.can_accept_number = false;
+            Ok(())
+        } else {
+            Err(ErrKind::UnExpectedNumber)
+        }
     }
 
-    fn append_operator(&mut self, operator: Operator) {
+    /// 8 + 2 - 4 * 5 / 2
+    /// numbers:    8 2
+    /// operators:  +
+    fn append_operator(&mut self, operator: Operator) -> Result<(), ErrKind> {
+        if self.can_accept_number {
+            return Err(ErrKind::UnExpectedOperator);
+        }
+        loop {
+            match self.operators.last() {
+                None => {
+                    // no operator
+                    return if self.numbers.is_empty() {
+                        // no number, operator not allowed
+                        Err(ErrKind::UnExpectedOperator)
+                    } else {
+                        break;
+                    };
+                }
+                Some(top_operator) => {
+                    // the new operator's priority is lower,
+                    // calculate the top operator's result first
+                    if &operator <= top_operator {
+                        let top_operator = self.operators.pop().unwrap();
+                        let result = top_operator.calculate(&mut self.numbers)?;
+                        self.numbers.push(result);
+                    } else {
+                        break;
+                    }
+                }
+            }
+        }
         self.operators.push(operator);
+        self.can_accept_number = true;
+        Ok(())
     }
 
-    fn get_result(&self) -> Option<&Number> {
-        self.numbers.first()
+    fn get_final_result(&mut self) -> Result<&Number, ErrKind> {
+        // push the lowest operator to force eval all remaining operator
+        self.append_operator(Operator::Eval)?;
+        // check the result
+        if self.numbers.len() != 1
+            || self.operators.len() != 1
+            || self.operators.last() != Some(&Operator::Eval)
+        {
+            Err(ErrKind::InvalidExpression)
+        } else {
+            Ok(self.numbers.first().unwrap())
+        }
     }
 }
 
@@ -90,8 +228,8 @@ fn operator(input: &str) -> IResult<&str, Operator> {
 
 #[cfg(test)]
 mod test {
-    use crate::calculator::Operator;
     use crate::calculator::{num, operator};
+    use crate::calculator::{Calculator, ErrKind, Number, Operator};
 
     #[test]
     fn test_num_parse() {
@@ -116,5 +254,23 @@ mod test {
         assert!(Operator::Subtract < Operator::Multiply);
         assert!(Operator::Add < Operator::Divide);
         assert!(Operator::Subtract < Operator::Divide);
+    }
+
+    #[test]
+    fn test_calculator() {
+        // 8 + 2 - 4 * 5 / 2
+        let mut calc = Calculator::default();
+        assert_eq!(Ok(()), calc.append_number(Number::from(8_i128)));
+        assert_eq!(Err(ErrKind::UnExpectedNumber), calc.append_number(Number::from(8_i128)));
+        assert_eq!(Ok(()), calc.append_operator(Operator::Add));
+        assert_eq!(Err(ErrKind::UnExpectedOperator), calc.append_operator(Operator::Add));
+        assert_eq!(Ok(()), calc.append_number(Number::from(2_i128)));
+        assert_eq!(Ok(()), calc.append_operator(Operator::Subtract));
+        assert_eq!(Ok(()), calc.append_number(Number::from(4_i128)));
+        assert_eq!(Ok(()), calc.append_operator(Operator::Multiply));
+        assert_eq!(Ok(()), calc.append_number(Number::from(5_i128)));
+        assert_eq!(Ok(()), calc.append_operator(Operator::Divide));
+        assert_eq!(Ok(()), calc.append_number(Number::from(2_i128)));
+        assert_eq!(Ok(&Number::from(0_i128)), calc.get_final_result());
     }
 }
