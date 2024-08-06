@@ -1,6 +1,7 @@
 use nom::branch::alt;
 use nom::character::complete::{char, digit1};
 use nom::combinator::{map, opt, recognize};
+use nom::multi::fold_many0;
 use nom::sequence::tuple;
 use nom::{IResult, Parser};
 use std::cmp::Ordering;
@@ -11,6 +12,12 @@ enum ErrKind {
     UnExpectedNumber,
     MoreParamRequired,
     InvalidExpression,
+}
+
+#[derive(Debug, PartialEq)]
+enum ExpressionItem {
+    Number(Number),
+    Operator(Operator),
 }
 
 #[derive(Debug, PartialEq)]
@@ -208,42 +215,80 @@ impl Calculator {
     }
 }
 
-fn num(input: &str) -> IResult<&str, i128> {
+fn num(input: &str) -> IResult<&str, ExpressionItem> {
     map(
-        recognize(tuple((opt(alt((char('+'), char('-')))), digit1))),
-        |s: &str| s.parse::<i128>().unwrap(),
+        // recognize(tuple((opt(alt((char('+'), char('-')))), digit1))),
+        recognize(digit1),
+        |s: &str| ExpressionItem::Number(Number::from(s.parse::<i128>().unwrap())),
     )
     .parse(input)
 }
 
-fn operator(input: &str) -> IResult<&str, Operator> {
+fn operator(input: &str) -> IResult<&str, ExpressionItem> {
     alt((
-        map(char('+'), |_| Operator::Add),
-        map(char('-'), |_| Operator::Subtract),
-        map(char('*'), |_| Operator::Multiply),
-        map(char('/'), |_| Operator::Divide),
+        map(char('+'), |_| ExpressionItem::Operator(Operator::Add)),
+        map(char('-'), |_| ExpressionItem::Operator(Operator::Subtract)),
+        map(char('*'), |_| ExpressionItem::Operator(Operator::Multiply)),
+        map(char('/'), |_| ExpressionItem::Operator(Operator::Divide)),
     ))
+    .parse(input)
+}
+
+fn parse(input: &str) -> IResult<&str, Calculator> {
+    fold_many0(
+        alt((num, operator)),
+        Calculator::default,
+        |mut calc, item| {
+            println!("item: {item:?}");
+            match item {
+                ExpressionItem::Number(number) => calc.append_number(number).unwrap(),
+                ExpressionItem::Operator(operator) => calc.append_operator(operator).unwrap(),
+            }
+            calc
+        },
+    )
     .parse(input)
 }
 
 #[cfg(test)]
 mod test {
-    use crate::calculator::{num, operator};
-    use crate::calculator::{Calculator, ErrKind, Number, Operator};
+    use crate::calculator::{num, operator, parse};
+    use crate::calculator::{Calculator, ErrKind, ExpressionItem, Number, Operator};
 
     #[test]
     fn test_num_parse() {
-        assert_eq!(Ok(("", 123)), num("123"));
-        assert_eq!(Ok(("", 123)), num("+123"));
-        assert_eq!(Ok(("", -123)), num("-123"));
+        assert_eq!(
+            Ok(("", ExpressionItem::Number(Number::from(123)))),
+            num("123")
+        );
+        assert_eq!(
+            Ok(("", ExpressionItem::Number(Number::from(123)))),
+            num("+123")
+        );
+        assert_eq!(
+            Ok(("", ExpressionItem::Number(Number::from(-123)))),
+            num("-123")
+        );
     }
 
     #[test]
     fn test_operator_parse() {
-        assert_eq!(Ok(("", Operator::Add)), operator("+"));
-        assert_eq!(Ok(("", Operator::Subtract)), operator("-"));
-        assert_eq!(Ok(("", Operator::Multiply)), operator("*"));
-        assert_eq!(Ok(("", Operator::Divide)), operator("/"));
+        assert_eq!(
+            Ok(("", ExpressionItem::Operator(Operator::Add))),
+            operator("+")
+        );
+        assert_eq!(
+            Ok(("", ExpressionItem::Operator(Operator::Subtract))),
+            operator("-")
+        );
+        assert_eq!(
+            Ok(("", ExpressionItem::Operator(Operator::Multiply))),
+            operator("*")
+        );
+        assert_eq!(
+            Ok(("", ExpressionItem::Operator(Operator::Divide))),
+            operator("/")
+        );
     }
 
     #[test]
@@ -261,9 +306,15 @@ mod test {
         // 8 + 2 - 4 * 5 / 2
         let mut calc = Calculator::default();
         assert_eq!(Ok(()), calc.append_number(Number::from(8_i128)));
-        assert_eq!(Err(ErrKind::UnExpectedNumber), calc.append_number(Number::from(8_i128)));
+        assert_eq!(
+            Err(ErrKind::UnExpectedNumber),
+            calc.append_number(Number::from(8_i128))
+        );
         assert_eq!(Ok(()), calc.append_operator(Operator::Add));
-        assert_eq!(Err(ErrKind::UnExpectedOperator), calc.append_operator(Operator::Add));
+        assert_eq!(
+            Err(ErrKind::UnExpectedOperator),
+            calc.append_operator(Operator::Add)
+        );
         assert_eq!(Ok(()), calc.append_number(Number::from(2_i128)));
         assert_eq!(Ok(()), calc.append_operator(Operator::Subtract));
         assert_eq!(Ok(()), calc.append_number(Number::from(4_i128)));
@@ -272,5 +323,12 @@ mod test {
         assert_eq!(Ok(()), calc.append_operator(Operator::Divide));
         assert_eq!(Ok(()), calc.append_number(Number::from(2_i128)));
         assert_eq!(Ok(&Number::from(0_i128)), calc.get_final_result());
+    }
+
+    #[test]
+    fn test_parse() {
+        let mut result = parse("8+2-4*5/2");
+        println!("{result:?}");
+        println!("{:?}", result.unwrap().1.get_final_result());
     }
 }
