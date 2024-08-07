@@ -252,8 +252,8 @@ fn parse(input: &str) -> IResult<&str, Calculator> {
 
 #[cfg(test)]
 mod test {
-    use crate::calculator::{num, operator, parse};
-    use crate::calculator::{Calculator, ErrKind, ExpressionItem, Number, Operator};
+    use crate::stack_based::{num, operator, parse};
+    use crate::stack_based::{Calculator, ErrKind, ExpressionItem, Number, Operator};
 
     #[test]
     fn test_num_parse() {
