@@ -1,10 +1,10 @@
+use std::cmp::Ordering;
+
+use nom::{IResult, Parser};
 use nom::branch::alt;
 use nom::character::complete::{char, digit1};
-use nom::combinator::{map, opt, recognize};
+use nom::combinator::{map, recognize};
 use nom::multi::fold_many0;
-use nom::sequence::tuple;
-use nom::{IResult, Parser};
-use std::cmp::Ordering;
 
 #[derive(Debug, PartialEq)]
 enum ErrKind {
@@ -327,7 +327,7 @@ mod test {
 
     #[test]
     fn test_parse() {
-        let mut result = parse("8+2-4*5/2");
+        let result = parse("8+2-4*5/2");
         println!("{result:?}");
         println!("{:?}", result.unwrap().1.get_final_result());
     }
