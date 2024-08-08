@@ -19,7 +19,7 @@ impl Debug for Expr {
 }
 
 impl Expr {
-    fn eval(&self) -> Num {
+    pub(crate) fn eval(&self) -> Num {
         match self {
             Expr::Num(num) => num.clone(),
             Expr::Add(lhs, rhs) => lhs.eval() + rhs.eval(),
